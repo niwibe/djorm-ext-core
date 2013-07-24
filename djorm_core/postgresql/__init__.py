@@ -15,8 +15,6 @@ import uuid
 
 
 _local_data = threading.local()
-_local_data.server_side_cursors = False
-_local_data.itersize = None
 
 
 class server_side_cursors(object):
@@ -24,15 +22,14 @@ class server_side_cursors(object):
         self.itersize = None
 
     def __enter__(self):
-        global _local_data
         self.old_itersize = getattr(_local_data, 'itersize', None)
+        self.old_cursors = getattr(_local_data, 'server_side_cursors', False)
         _local_data.itersize = self.itersize
         _local_data.server_side_cursors = True
 
     def __exit__(self, type, value, traceback):
-        global _local_data
         _local_data.itersize = self.old_itersize
-        _local_data.server_side_cursors = False
+        _local_data.server_side_cursors = self.old_cursors
 
 
 def patch_cursor_wrapper():
@@ -47,18 +44,17 @@ def patch_cursor_wrapper():
         def __init__(self, *args, **kwargs):
             super(CursorWrapper, self).__init__(*args, **kwargs)
 
-            if not _local_data.server_side_cursors:
+            if not getattr(_local_data, 'server_side_cursors', False):
                 return
 
-            global _local_data
             connection = self.cursor.connection
             cursor = self.cursor
 
-            self.cursor = connection.cursor(name="cur{0}".format(
-                                str(uuid.uuid4()).replace("-", "")))
+            name = uuid.uuid4().hex
+            self.cursor = connection.cursor(name="cur{0}".format(name))
             self.cursor.tzinfo_factory = cursor.tzinfo_factory
 
-            if _local_data.itersize:
+            if getattr(_local_data, 'itersize', None):
                 self.cursor.itersize = _local_data.itersize
 
     base.CursorWrapper = CursorWrapper
