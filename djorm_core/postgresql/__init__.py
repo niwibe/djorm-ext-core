@@ -20,17 +20,21 @@ _local_data = threading.local()
 
 
 class server_side_cursors(object):
-    def __init__(self, itersize=None):
+    def __init__(self, itersize=None, withhold=False):
         self.itersize = itersize
+        self.withhold = withhold
 
     def __enter__(self):
         self.old_itersize = getattr(_local_data, 'itersize', None)
+        self.old_withhold = getattr(_local_data, 'withhold', None)
         self.old_cursors = getattr(_local_data, 'server_side_cursors', False)
         _local_data.itersize = self.itersize
+        _local_data.withhold = self.withhold
         _local_data.server_side_cursors = True
 
     def __exit__(self, type, value, traceback):
         _local_data.itersize = self.old_itersize
+        _local_data.withhold = self.old_withhold
         _local_data.server_side_cursors = self.old_cursors
 
 
@@ -52,12 +56,31 @@ def patch_cursor_wrapper_django_lt_1_6():
             connection = self.cursor.connection
             cursor = self.cursor
 
+            self.cs_cursor = self.cursor    # client-side cursor
+
             name = uuid.uuid4().hex
-            self.cursor = connection.cursor(name="cur{0}".format(name))
+            self.cursor = connection.cursor(name="cur{0}".format(name),
+                    withhold=getattr(_local_data, 'withhold', False))
             self.cursor.tzinfo_factory = cursor.tzinfo_factory
+
+            self.ss_cursor = self.cursor    # server-side cursor
 
             if getattr(_local_data, 'itersize', None):
                 self.cursor.itersize = _local_data.itersize
+
+        def choose_cursor(self, query):
+            if query.startswith('SELECT'):      # server-side cursor only for
+                self.cursor=self.ss_cursor      # SELECT statement
+            else:
+                self.cursor=self.cs_cursor
+
+        def execute(self, query, args=None):
+            self.choose_cursor(query)
+            super(CursorWrapper, self).execute(query, args)
+
+        def executemany(self, query, args):
+            self.choose_cursor(query)
+            super(CursorWrapper, self).executemany(query, args)
 
     base.CursorWrapper = CursorWrapper
 
