@@ -54,12 +54,13 @@ def patch_cursor_wrapper_django_lt_1_6():
                 return
 
             connection = self.cursor.connection
+
             self.cs_cursor = self.cursor    # client-side cursor
 
             name = uuid.uuid4().hex
             self.cursor = connection.cursor(name="cur{0}".format(name),
                     withhold=getattr(_local_data, 'withhold', False))
-            self.cursor.tzinfo_factory = cursor.tzinfo_factory
+            self.cursor.tzinfo_factory = self.cs_cursor.tzinfo_factory
 
             self.ss_cursor = self.cursor    # server-side cursor
 
