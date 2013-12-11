@@ -54,8 +54,6 @@ def patch_cursor_wrapper_django_lt_1_6():
                 return
 
             connection = self.cursor.connection
-            cursor = self.cursor
-
             self.cs_cursor = self.cursor    # client-side cursor
 
             name = uuid.uuid4().hex
